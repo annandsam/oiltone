@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Oil &amp; Tone</title>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@12,400&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #07090c; touch-action: none; }
+
+/* ─── Full-screen canvas ─── */
+#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ─── Start screen ─── */
+#start {
+  position: fixed; inset: 0; z-index: 30;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  background: radial-gradient(ellipse at center, rgba(5,10,18,0.52) 0%, rgba(5,10,18,0.75) 100%);
+  transition: opacity 1.4s ease;
+}
+#start.hidden { opacity: 0; pointer-events: none; }
+
+.t1 {
+  font-family: 'Bodoni Moda', Georgia, serif;
+  font-size: clamp(44px, 9vw, 96px);
+  font-weight: 400; letter-spacing: 0.05em;
+  color: rgba(220, 215, 205, 0.92);
+  animation: glow 3.5s ease-in-out infinite;
+}
+.t2 {
+  margin-top: 16px;
+  font-family: 'Space Mono', monospace;
+  font-size: clamp(9px, 1.6vw, 13px);
+  letter-spacing: 0.28em; text-transform: uppercase;
+  color: rgba(200, 195, 185, 0.38);
+  animation: glow 3.5s ease-in-out 1.2s infinite;
+}
+.t3 {
+  margin-top: 32px;
+  display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+  font-family: 'Space Mono', monospace;
+  font-size: clamp(7px, 1.1vw, 9px);
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: rgba(200, 195, 185, 0.22);
+}
+.t3 span { display: flex; align-items: center; gap: 5px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+@keyframes glow { 0%,100%{opacity:.7} 50%{opacity:1} }
+
+/* ─── Parameter labels ─── */
+.plbl {
+  position: fixed; z-index: 20; pointer-events: none;
+  font-family: 'Space Mono', monospace;
+  font-size: clamp(6px, 0.9vw, 9px);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  opacity: 0; transition: opacity 1.2s ease 0.6s;
+}
+.plbl.vis { opacity: 0.6; }
+.pname { display: block; margin-bottom: 5px; }
+.pbar { width: 52px; height: 2px; background: rgba(255,255,255,0.1); border-radius: 1px; overflow: hidden; }
+.pbar-fill { height: 100%; border-radius: 1px; width: 50%; transition: width 0.1s linear; }
+
+/* Positions */
+#lb0 { top: 20px; left: 20px; color: #6aadee; }
+#lb0 .pbar-fill { background: #6aadee; }
+#lb1 { top: 20px; right: 20px; color: #d8c898; text-align: right; }
+#lb1 .pbar { margin-left: auto; }
+#lb1 .pbar-fill { background: #d8c898; }
+#lb2 { bottom: 28px; left: 20px; color: #d8950a; }
+#lb2 .pbar-fill { background: #d8950a; }
+#lb3 { bottom: 28px; right: 20px; color: #d84040; text-align: right; }
+#lb3 .pbar { margin-left: auto; }
+#lb3 .pbar-fill { background: #d84040; }
+#lb4 {
+  top: 50%; right: 20px; transform: translateY(-50%);
+  color: #48c060; text-align: right;
+}
+#lb4 .pbar { margin-left: auto; }
+#lb4 .pbar-fill { background: #48c060; }
+
+/* ─── Audio active dot ─── */
+#adot {
+  position: fixed; bottom: 12px; left: 50%;
+  transform: translateX(-50%);
+  width: 5px; height: 5px; border-radius: 50%;
+  background: rgba(255,255,255,0.15); z-index: 20;
+  transition: background 0.6s, box-shadow 0.6s;
+}
+#adot.on {
+  background: #2eff9a;
+  box-shadow: 0 0 8px 2px rgba(46,255,154,0.5);
+  animation: adotBreathe 2.8s ease-in-out infinite;
+}
+@keyframes adotBreathe { 0%,100%{opacity:.45} 50%{opacity:1} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- Parameter labels -->
+<div class="plbl" id="lb0"><span class="pname">Filter</span><div class="pbar"><div class="pbar-fill" id="pf0"></div></div></div>
+<div class="plbl" id="lb1"><span class="pname">Volume</span><div class="pbar"><div class="pbar-fill" id="pf1"></div></div></div>
+<div class="plbl" id="lb2"><span class="pname">FM Shimmer</span><div class="pbar"><div class="pbar-fill" id="pf2"></div></div></div>
+<div class="plbl" id="lb3"><span class="pname">Wavefold</span><div class="pbar"><div class="pbar-fill" id="pf3"></div></div></div>
+<div class="plbl" id="lb4"><span class="pname">Harmonics</span><div class="pbar"><div class="pbar-fill" id="pf4"></div></div></div>
+<div id="adot"></div>
+
+<!-- Start screen -->
+<div id="start">
+  <div class="t1">Oil &amp; Tone</div>
+  <div class="t2">Touch anywhere to begin</div>
+  <div class="t3">
+    <span><span class="dot" style="background:#6aadee"></span>Filter</span>
+    <span><span class="dot" style="background:#d8c898"></span>Volume</span>
+    <span><span class="dot" style="background:#d8950a"></span>FM Shimmer</span>
+    <span><span class="dot" style="background:#d84040"></span>Wavefold</span>
+    <span><span class="dot" style="background:#48c060"></span>Harmonics</span>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════════
+   WEBGL METABALL VISUALIZER
+   Identical field equation & blob simulation to index.html,
+   adapted for full-screen and to expose blob state for audio.
+════════════════════════════════════════════════════════════════ */
+const canvas = document.getElementById('c');
+
+(function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.floor(window.innerWidth  * dpr);
+  canvas.height = Math.floor(window.innerHeight * dpr);
+})();
+window.addEventListener('resize', () => {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.floor(window.innerWidth  * dpr);
+  canvas.height = Math.floor(window.innerHeight * dpr);
+});
+
+const gl = canvas.getContext('webgl', { alpha: false, antialias: false })
+         || canvas.getContext('experimental-webgl', { alpha: false });
+
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  return s;
+}
+function mkProg(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  return p;
+}
+
+const VS = "attribute vec2 a_pos;\nvoid main(){gl_Position=vec4(a_pos,0.,1.);}";
+
+// Exact same fragment shader logic as index.html — 5 groups × 5 blobs each
+// Colors: blue, cream, orange, red, green
+const FS = "precision mediump float;\nuniform vec2  u_res;\nuniform float u_bx[25];\nuniform float u_by[25];\nuniform float u_br[25];\nvoid main(){\n  vec2 uv=gl_FragCoord.xy/u_res;\n  float f0=0.,f1=0.,f2=0.,f3=0.,f4=0.;\n  { float dx=uv.x-u_bx[0]; float dy=uv.y-u_by[0]; f0+=u_br[0]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[1]; float dy=uv.y-u_by[1]; f0+=u_br[1]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[2]; float dy=uv.y-u_by[2]; f0+=u_br[2]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[3]; float dy=uv.y-u_by[3]; f0+=u_br[3]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[4]; float dy=uv.y-u_by[4]; f0+=u_br[4]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[5]; float dy=uv.y-u_by[5]; f1+=u_br[5]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[6]; float dy=uv.y-u_by[6]; f1+=u_br[6]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[7]; float dy=uv.y-u_by[7]; f1+=u_br[7]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[8]; float dy=uv.y-u_by[8]; f1+=u_br[8]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[9]; float dy=uv.y-u_by[9]; f1+=u_br[9]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[10]; float dy=uv.y-u_by[10]; f2+=u_br[10]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[11]; float dy=uv.y-u_by[11]; f2+=u_br[11]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[12]; float dy=uv.y-u_by[12]; f2+=u_br[12]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[13]; float dy=uv.y-u_by[13]; f2+=u_br[13]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[14]; float dy=uv.y-u_by[14]; f2+=u_br[14]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[15]; float dy=uv.y-u_by[15]; f3+=u_br[15]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[16]; float dy=uv.y-u_by[16]; f3+=u_br[16]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[17]; float dy=uv.y-u_by[17]; f3+=u_br[17]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[18]; float dy=uv.y-u_by[18]; f3+=u_br[18]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[19]; float dy=uv.y-u_by[19]; f3+=u_br[19]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[20]; float dy=uv.y-u_by[20]; f4+=u_br[20]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[21]; float dy=uv.y-u_by[21]; f4+=u_br[21]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[22]; float dy=uv.y-u_by[22]; f4+=u_br[22]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[23]; float dy=uv.y-u_by[23]; f4+=u_br[23]/(dx*dx*0.62+dy*dy+0.0002); }\n  { float dx=uv.x-u_bx[24]; float dy=uv.y-u_by[24]; f4+=u_br[24]/(dx*dx*0.62+dy*dy+0.0002); }\n  vec3 col=vec3(0.047,0.071,0.098);\n  float total=f0+f1+f2+f3+f4;\n  if(total>=1.0){\n    float m=f0; col=vec3(0.106,0.212,0.329);\n    if(f1>m){m=f1;col=vec3(0.773,0.741,0.659);}\n    if(f2>m){m=f2;col=vec3(0.769,0.565,0.047);}\n    if(f3>m){m=f3;col=vec3(0.702,0.173,0.118);}\n    if(f4>m){     col=vec3(0.078,0.243,0.102);}\n  }\n  gl_FragColor=vec4(col,1.);\n}";
+
+const prog = mkProg(VS, FS);
+const vbuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+const uRes = gl.getUniformLocation(prog, 'u_res');
+const uBX  = gl.getUniformLocation(prog, 'u_bx');
+const uBY  = gl.getUniformLocation(prog, 'u_by');
+const uBR  = gl.getUniformLocation(prog, 'u_br');
+const aPos = gl.getAttribLocation(prog,  'a_pos');
+
+// ── Blob simulation — exact copy from index.html ──
+const N = 25;
+const px = new Float32Array(N), py = new Float32Array(N);
+const vx = new Float32Array(N), vy = new Float32Array(N);
+const hx = new Float32Array(N), hy = new Float32Array(N);
+const br = new Float32Array(N), ph = new Float32Array(N);
+
+let seed = 98765;
+function rng() { seed = ((seed * 1664525) + 1013904223) >>> 0; return seed / 4294967296; }
+
+for (let i = 0; i < N; i++) {
+  hx[i] = 0.08 + rng() * 0.84;
+  hy[i] = 0.06 + rng() * 0.88;
+  px[i] = hx[i]; py[i] = hy[i];
+  ph[i] = rng() * 6.2832;
+  const ig = i % 5;
+  br[i] = ig < 2 ? (0.036 + rng() * 0.019) : ig < 4 ? (0.014 + rng() * 0.010) : (0.004 + rng() * 0.005);
+}
+
+let mx = -1, my = -1;
+function onMove(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  mx = (cx - r.left) / r.width;
+  my = 1 - (cy - r.top) / r.height;
+}
+canvas.addEventListener('mousemove',  e => onMove(e.clientX, e.clientY));
+canvas.addEventListener('mouseleave', () => { mx = -1; });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+canvas.addEventListener('touchend',   () => { mx = -1; });
+
+// Heavy oil physics — high inertia, very weak spring, barely any autonomous drift
+const DAMP=0.9993, SPRING=0.0000015, MR=0.32, MF=0.00058, DRIFT=0.000000090;
+const T0 = performance.now();
+
+// Per-group kinetic energy, computed each physics step for audio coupling
+const groupKE = new Float32Array(5);
+
+function stepBlobs(t) {
+  for (let i = 0; i < N; i++) {
+    vx[i] += (hx[i] - px[i]) * SPRING;
+    vy[i] += (hy[i] - py[i]) * SPRING;
+    vx[i] += Math.sin(t * 0.000130 + ph[i]) * DRIFT;
+    vy[i] += Math.cos(t * 0.000098 + ph[i] + 1.9) * DRIFT;
+    if (mx >= 0) {
+      const dx = px[i] - mx, dy = py[i] - my, d2 = dx*dx + dy*dy;
+      if (d2 < MR * MR) {
+        const d = Math.sqrt(d2) + 0.001;
+        const f = (1 - d/MR) * (1 - d/MR) * MF;
+        vx[i] += dx/d * f; vy[i] += dy/d * f;
+      }
+    }
+    vx[i] *= DAMP; vy[i] *= DAMP;
+    px[i] += vx[i]; py[i] += vy[i];
+    const m = 0.04;
+    if (px[i] < m)   { px[i] = m;   vx[i] =  Math.abs(vx[i]) * 0.3; }
+    if (px[i] > 1-m) { px[i] = 1-m; vx[i] = -Math.abs(vx[i]) * 0.3; }
+    if (py[i] < m)   { py[i] = m;   vy[i] =  Math.abs(vy[i]) * 0.3; }
+    if (py[i] > 1-m) { py[i] = 1-m; vy[i] = -Math.abs(vy[i]) * 0.3; }
+  }
+  // Per-group kinetic energy — read by audioLoop for motion coupling
+  groupKE.fill(0);
+  for (let i = 0; i < N; i++) { const g = Math.floor(i / 5); groupKE[g] += vx[i]*vx[i] + vy[i]*vy[i]; }
+}
+
+function renderGL() {
+  stepBlobs(performance.now() - T0);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbuf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1fv(uBX, px); gl.uniform1fv(uBY, py); gl.uniform1fv(uBR, br);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(renderGL);
+}
+renderGL();
+
+
+/* ════════════════════════════════════════════════════════════════
+   BLOB ANALYSIS
+   Sample a 14×14 JS grid using the SAME field equation as the
+   shader (dx²×0.62 + dy²) to measure each colour group's screen
+   dominance, then map to audio parameters.
+════════════════════════════════════════════════════════════════ */
+function analyzeBlobs() {
+  const GRID = 14;
+  const counts = [0, 0, 0, 0, 0];
+  let total = 0;
+
+  for (let gx = 0; gx < GRID; gx++) {
+    for (let gy = 0; gy < GRID; gy++) {
+      const x = (gx + 0.5) / GRID;
+      const y = (gy + 0.5) / GRID;
+      const f = [0, 0, 0, 0, 0];
+
+      for (let i = 0; i < N; i++) {
+        const g = Math.floor(i / 5);
+        const dx = px[i] - x, dy = py[i] - y;
+        f[g] += br[i] / (dx*dx*0.62 + dy*dy + 0.0002);
+      }
+
+      const sum = f[0]+f[1]+f[2]+f[3]+f[4];
+      if (sum >= 1.0) {
+        let maxF = f[0], maxG = 0;
+        for (let g = 1; g < 5; g++) if (f[g] > maxF) { maxF = f[g]; maxG = g; }
+        counts[maxG]++;
+        total++;
+      }
+    }
+  }
+
+  const t = total || 1;
+  return counts.map(c => c / t);
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   AUDIO ENGINE
+   Architecture (per voice):
+     osc1 (sine, note freq)
+     osc2 (sine, note freq × tiny detune)  ──┐
+     fmMod (sine, freq × fmRatio) → fmGain → osc1.freq (FM)
+     oscSum ──→ WaveFolder ──→ foldWet ──┐
+             ──→ foldDry ─────────────── foldMix → voiceGain
+   All 10 voiceGains → filterBus
+     filterBus → preSat (Buchla tanh warm)
+       → LP + BP + HP (Triple Morphing Filter, parallel, crossfade)
+       → filterSum → dryGain → masterGain
+                  → Convolver reverb → wetGain → masterGain
+   Blue   → Triple Filter dark/bright morph
+   Cream  → Master volume
+   Orange → FM shimmer depth (metallic/bell character)
+   Red    → Wavefold amount (harmonic richness)
+   Green  → Harmonic bloom (upper voice levels)
+════════════════════════════════════════════════════════════════ */
+
+// ── Per-blob note assignment ──
+// 5 colour groups × 5 blobs each, one octave per group.
+// Within each group: C major pentatonic semitone offsets [0,7,4,2,9] = C G E D A
+// so the two large blobs get the stable C and G, medium blobs get colour tones.
+(function buildBlobTables() {
+  const PENTA = [0, 7, 4, 2, 9]; // semitone offsets within octave
+  const BASE_MIDI = [24, 36, 48, 60, 72]; // C1 C2 C3 C4 C5
+  const GROUP_GAIN = [0.072, 0.085, 0.092, 0.085, 0.068]; // per colour group
+  window._BLOB_FREQS = [];
+  window._BLOB_GAINS = [];
+  window._BLOB_FM_RATIO = [];
+  window._BLOB_DETUNE = [];
+  for (let i = 0; i < 25; i++) {
+    const g = Math.floor(i / 5), p = i % 5;
+    window._BLOB_FREQS[i]    = 440 * Math.pow(2, (BASE_MIDI[g] + PENTA[p] - 69) / 12);
+    window._BLOB_GAINS[i]    = 0; // filled after br[] is set
+    window._BLOB_FM_RATIO[i] = (p % 2 === 0) ? 1.5 : 2.0;
+    window._BLOB_DETUNE[i]   = (((i * 7) % 19) - 9) * 0.20; // ±1.8 cents, spread
+  }
+})();
+
+let actx = null;
+let masterGain, filterBus, filterSum, lpf, bpf, hpf, lpfG, bpfG, hpfG;
+
+// Per-blob voice state (null = silent)
+const blobVoice  = new Array(N).fill(null);
+const blobActive = new Array(N).fill(false);
+
+// Thresholds: note ON when same-colour neighbours field ≥ ON_T, OFF when < OFF_T (hysteresis)
+const ON_T  = 0.55;
+const OFF_T = 0.26;
+
+// Compute same-group field at blob i's position from its 4 group-mates
+function sameGroupField(i) {
+  const x = px[i], y = py[i];
+  const g = Math.floor(i / 5) * 5;
+  let f = 0;
+  for (let j = g; j < g + 5; j++) {
+    if (j === i) continue;
+    const dx = px[j] - x, dy = py[j] - y;
+    f += br[j] / (dx*dx*0.62 + dy*dy + 0.0002);
+  }
+  return f;
+}
+
+function blobGainTarget(i) {
+  // Already baked after br[] init — see initAudioTables()
+  return window._BLOB_GAINS[i];
+}
+
+// Current smoothed state
+const state = { filt: 0.3, vol: 0.6, fm: 0.0, fold: 0.0, harm: 0.3, mqBoost: 0.0 };
+const target = { ...state };
+const dom = [0.2, 0.2, 0.2, 0.2, 0.2];  // smoothed dominance
+
+// Wavefold curve — from GhostTone: sin(π × x × folds)
+function makeFoldCurve(folds, n = 1024) {
+  const c = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = ((i / (n - 1)) * 2 - 1);
+    c[i] = Math.sin(Math.PI * x * folds);
+  }
+  return c;
+}
+
+// Buchla 259-style pre-saturation — from GhostTone: tanh(x×drive)/tanh(drive)
+function makeSatCurve(drive = 2.2, n = 512) {
+  const c = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = ((i / (n - 1)) * 2 - 1);
+    c[i] = Math.tanh(x * drive) / Math.tanh(drive);
+  }
+  return c;
+}
+
+// Synthetic reverb IR: shaped noise with spectral tilt
+function makeReverbIR(ctx, dur = 1.8, decay = 3.5) {
+  const sr = ctx.sampleRate;
+  const len = Math.floor(sr * dur);
+  const ir = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      const env = Math.pow(1 - i / len, decay);
+      d[i] = (Math.random() * 2 - 1) * env;
+    }
+  }
+  return ir;
+}
+
+function centsToRatio(cents) { return Math.pow(2, cents / 1200); }
+
+function initAudio() {
+  if (actx) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = actx;
+
+  // ── Master output ──
+  masterGain = ctx.createGain(); masterGain.gain.value = 0;
+  masterGain.connect(ctx.destination);
+
+  // ── Pre-saturation (Buchla 259 warm) ──
+  const preSat = ctx.createWaveShaper();
+  preSat.curve = makeSatCurve(2.2); preSat.oversample = '2x';
+
+  // ── Triple Morphing Filter (Buchla-inspired) ──
+  // Three parallel paths: LP / BP / HP — crossfaded by blue blob dominance
+  filterBus = ctx.createGain(); filterBus.gain.value = 1;
+
+  lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass';  lpf.frequency.value = 1800; lpf.Q.value = 2.5;
+  bpf = ctx.createBiquadFilter(); bpf.type = 'bandpass'; bpf.frequency.value = 900;  bpf.Q.value = 4.5;
+  hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 350;  hpf.Q.value = 2.5;
+
+  lpfG = ctx.createGain(); lpfG.gain.value = 1.0;
+  bpfG = ctx.createGain(); bpfG.gain.value = 0.0;
+  hpfG = ctx.createGain(); hpfG.gain.value = 0.0;
+
+  filterSum = ctx.createGain(); filterSum.gain.value = 1;
+
+  filterBus.connect(preSat);
+  preSat.connect(lpf); lpf.connect(lpfG); lpfG.connect(filterSum);
+  preSat.connect(bpf); bpf.connect(bpfG); bpfG.connect(filterSum);
+  preSat.connect(hpf); hpf.connect(hpfG); hpfG.connect(filterSum);
+
+  // ── 4-stage allpass phaser (slow LFO sweeps phase through the spectrum) ──
+  // Each allpass is tuned a couple of octaves apart; the LFO slowly wobbles all centres.
+  const PHASE_FREQS = [120, 340, 950, 2600];
+  const apNodes = PHASE_FREQS.map(f => {
+    const ap = ctx.createBiquadFilter(); ap.type = 'allpass';
+    ap.frequency.value = f; ap.Q.value = 6.5;
+    return ap;
+  });
+  // Chain allpasses in series
+  for (let i = 0; i < apNodes.length - 1; i++) apNodes[i].connect(apNodes[i + 1]);
+  // Slow LFO sweeps all allpass centre freqs (0.04 Hz — just under 25s cycle)
+  const phaserLFO = ctx.createOscillator(); phaserLFO.frequency.value = 0.04; phaserLFO.type = 'sine';
+  const phaserLFOGain = ctx.createGain(); phaserLFOGain.gain.value = 1; // gain node as a float scaler below
+  phaserLFO.connect(phaserLFOGain);
+  // Each allpass gets its own scaled LFO connection so they sweep in parallel
+  apNodes.forEach((ap, i) => {
+    const lfoScale = ctx.createGain();
+    lfoScale.gain.value = PHASE_FREQS[i] * 0.55; // sweep ±55% of centre freq
+    phaserLFOGain.connect(lfoScale);
+    lfoScale.connect(ap.frequency);
+  });
+  phaserLFO.start();
+
+  // Dry + phased wet blend (classic phaser: dry + wet = comb-filter notches)
+  const phaseDry = ctx.createGain(); phaseDry.gain.value = 0.70;
+  const phaseWet = ctx.createGain(); phaseWet.gain.value = 0.42;
+  filterSum.connect(phaseDry);
+  filterSum.connect(apNodes[0]);
+  apNodes[apNodes.length - 1].connect(phaseWet);
+  const phaseSum = ctx.createGain(); phaseSum.gain.value = 1;
+  phaseDry.connect(phaseSum); phaseWet.connect(phaseSum);
+
+  // ── Convolution reverb (lush hall tail) ──
+  const reverb = ctx.createConvolver();
+  reverb.buffer = makeReverbIR(ctx);
+  const dryG = ctx.createGain(); dryG.gain.value = 0.65;
+  const wetG = ctx.createGain(); wetG.gain.value = 0.42;
+  phaseSum.connect(dryG); dryG.connect(masterGain);
+  phaseSum.connect(reverb); reverb.connect(wetG); wetG.connect(masterGain);
+
+  // ── Bake gain targets now that br[] is populated ──
+  // (br[] was set during blob init above, before initAudio is called)
+  const GROUP_GAIN = [0.072, 0.085, 0.092, 0.085, 0.068];
+  for (let i = 0; i < N; i++) {
+    const g = Math.floor(i / 5);
+    const sizeNorm = Math.min(1, br[i] / 0.040);
+    window._BLOB_GAINS[i] = sizeNorm * GROUP_GAIN[g];
+  }
+
+  // ── Slow fade-in (no voices yet — silence until blobs connect) ──
+  masterGain.gain.setValueAtTime(0, ctx.currentTime);
+  masterGain.gain.linearRampToValueAtTime(0.80, ctx.currentTime + 1.8);
+
+  document.getElementById('adot').classList.add('on');
+  document.querySelectorAll('.plbl').forEach(el => el.classList.add('vis'));
+
+  audioLoop();
+}
+
+/* ─── Spawn a voice for blob i ─── */
+function noteOn(i) {
+  if (!actx || blobVoice[i]) return;
+  const ctx = actx;
+  const freq = window._BLOB_FREQS[i];
+  const gain = blobGainTarget(i);
+  const fmR  = window._BLOB_FM_RATIO[i];
+  const det  = window._BLOB_DETUNE[i];
+
+  const voiceGain = ctx.createGain(); voiceGain.gain.value = 0;
+
+  const osc1 = ctx.createOscillator(); osc1.type = 'sine'; osc1.frequency.value = freq;
+  const osc2 = ctx.createOscillator(); osc2.type = 'sine';
+  osc2.frequency.value = freq * Math.pow(2, det / 1200);
+
+  const fmMod = ctx.createOscillator(); fmMod.type = 'sine'; fmMod.frequency.value = freq * fmR;
+  const fmGain = ctx.createGain(); fmGain.gain.value = 0;
+  fmMod.connect(fmGain);
+  fmGain.connect(osc1.frequency);
+  fmGain.connect(osc2.frequency);
+
+  const oscSum = ctx.createGain(); oscSum.gain.value = 0.5;
+  osc1.connect(oscSum); osc2.connect(oscSum);
+
+  const curFold = 1.5 + state.fold * 5.5;   // floor of 1.5 folds even at zero red
+  const folder  = ctx.createWaveShaper();
+  folder.curve  = makeFoldCurve(curFold); folder.oversample = '2x';
+  const foldWetAmt = 0.22 + state.fold * 0.78;  // always ≥22% wet
+  const foldDry = ctx.createGain(); foldDry.gain.value = 1 - foldWetAmt;
+  const foldWet = ctx.createGain(); foldWet.gain.value = foldWetAmt;
+  const foldMix = ctx.createGain(); foldMix.gain.value = 1;
+
+  oscSum.connect(foldDry); foldDry.connect(foldMix);
+  oscSum.connect(folder);  folder.connect(foldWet); foldWet.connect(foldMix);
+
+  // StereoPanner — blob x position maps left (0) → right (1) as pan -1 → +1
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = Math.max(-1, Math.min(1, px[i] * 2 - 1));
+
+  foldMix.connect(voiceGain);
+  voiceGain.connect(panner);
+  panner.connect(filterBus);
+
+  osc1.start(); osc2.start(); fmMod.start();
+
+  // Soft attack — larger blobs fade in a touch slower for a pillowy feel
+  const attackTime = 0.25 + (gain / 0.092) * 0.35;
+  voiceGain.gain.setValueAtTime(0, ctx.currentTime);
+  voiceGain.gain.linearRampToValueAtTime(gain, ctx.currentTime + attackTime);
+
+  blobVoice[i] = { osc1, osc2, fmMod, fmGain, folder, foldDry, foldWet, foldMix, voiceGain, panner,
+                   freq, fmR, _lastFolds: curFold };
+}
+
+/* ─── Fade out and kill a voice for blob i ─── */
+function noteOff(i) {
+  const v = blobVoice[i];
+  if (!v || !actx) return;
+  blobVoice[i] = null;
+
+  const t = actx.currentTime;
+  v.voiceGain.gain.cancelScheduledValues(t);
+  v.voiceGain.gain.setValueAtTime(v.voiceGain.gain.value, t);
+  v.voiceGain.gain.linearRampToValueAtTime(0, t + 0.75);
+
+  setTimeout(() => {
+    try { v.osc1.stop(); v.osc2.stop(); v.fmMod.stop(); } catch(_) {}
+    [v.osc1, v.osc2, v.fmMod, v.fmGain, v.folder,
+     v.foldDry, v.foldWet, v.foldMix, v.voiceGain, v.panner]
+      .forEach(n => { try { n.disconnect(); } catch(_) {} });
+  }, 900);
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   AUDIO UPDATE LOOP — runs every animation frame after init
+════════════════════════════════════════════════════════════════ */
+let lastAnalT = 0;
+let foldCurveUpdateT = 0;
+let lastFoldVal = -1;
+
+// Smoothed per-group motion levels (0–1), keyed to groupKE[]
+const groupMotion = new Float32Array(5);
+// FM accumulator: builds slowly when orange blobs drift gently, decays faster otherwise
+let fmAccum = 0;
+
+function audioLoop() {
+  if (!actx) return;
+
+  const now = performance.now();
+
+  // Analyse blobs ~80ms
+  if (now - lastAnalT > 80) {
+    lastAnalT = now;
+    const raw = analyzeBlobs();
+    // Smooth dominance values (slew)
+    for (let i = 0; i < 5; i++) dom[i] += (raw[i] - dom[i]) * 0.22;
+
+    // ── Per-group motion levels ──
+    // groupKE values are tiny (velocity² space); scale sqrt for linear feel.
+    // KE_SCALE = sqrt of typical "active push" KE per group (~5 blobs moving at ~0.002/frame)
+    const KE_SCALE = 0.0055;
+    for (let g = 0; g < 5; g++) {
+      const rawM = Math.min(1, Math.sqrt(groupKE[g]) / KE_SCALE);
+      // Fast smoother — motion should feel snappy
+      groupMotion[g] += (rawM - groupMotion[g]) * 0.18;
+    }
+
+    // ── FM accumulator (orange group, slot 2) ──
+    // Gaussian bell: maximum FM contribution when orange blobs drift gently (~0.18 motion)
+    // Rises very slowly, falls at medium speed — you earn it through patient interaction
+    const orangeM = groupMotion[2];
+    const fmBell = Math.exp(-Math.pow((orangeM - 0.18) / 0.12, 2));
+    fmAccum += fmBell > fmAccum
+      ? (fmBell - fmAccum) * 0.0014   // rise: ~700 frames ≈ 11s to saturate
+      : (fmBell - fmAccum) * 0.0045;  // fall: ~220 frames ≈ 3.6s to drain
+    fmAccum = Math.max(0, Math.min(1, fmAccum));
+
+    // ── Blob connection scan → note on / note off ──
+    for (let i = 0; i < N; i++) {
+      const cf = sameGroupField(i);
+      if (!blobActive[i] && cf >= ON_T) {
+        blobActive[i] = true;
+        noteOn(i);
+      } else if (blobActive[i] && cf < OFF_T) {
+        blobActive[i] = false;
+        noteOff(i);
+      }
+    }
+
+
+    // Blue (0)  → filter morph: more blue = deeper LP/darker
+    target.filt = dom[0];
+    // Cream (1) → volume
+    target.vol  = 0.22 + dom[1] * 0.78;
+    // Orange (2) → FM: fully driven by motion accumulator, gated by orange dominance
+    target.fm   = fmAccum * (0.25 + dom[2] * 0.75);
+    // Red (3)   → wavefold base + motion boost (red blobs thrashing = more fold)
+    target.fold = Math.min(1, dom[3] + groupMotion[3] * 0.52);
+    // Green (4) → harmonic bloom
+    target.harm = dom[4];
+    // Motion Q boost: blue motion spikes filter resonance; red/orange add edge
+    target.mqBoost = groupMotion[0] * 11 + (groupMotion[3] + groupMotion[2]) * 4.5;
+  }
+
+  // Slew limit — mqBoost is faster so filter snaps to motion then relaxes
+  state.mqBoost += (target.mqBoost - state.mqBoost) * 0.13;
+  const slew = 0.055;
+  for (const k of ['filt','vol','fm','fold','harm']) state[k] += (target[k] - state[k]) * slew;
+
+  applyAudioParams();
+  updateHUD();
+
+  requestAnimationFrame(audioLoop);
+}
+
+
+function applyAudioParams() {
+  const t   = actx.currentTime;
+  const tc  = 0.09;  // setTargetAtTime time constant
+
+  // ── Master volume (cream blobs) ──
+  masterGain.gain.setTargetAtTime(state.vol * 0.72, t, tc);
+
+  // ── Triple Morphing Filter (blue blobs) ──
+  // m=0: full warm LP  →  m=0.5: Buchla BP resonance  →  m=1: airy HP
+  const m = state.filt;
+  let lw, bw, hw;
+  if (m <= 0.5) {
+    const r = m * 2;
+    lw = 1 - r * 0.7;  // LP never fully off (0.3 floor)
+    bw = r;
+    hw = 0;
+  } else {
+    const r = (m - 0.5) * 2;
+    lw = 0.3 * (1 - r);
+    bw = 1 - r;
+    hw = r * 0.65;     // HP never fully on (Buchla rarely goes sharp)
+  }
+  lpfG.gain.setTargetAtTime(lw, t, tc);
+  bpfG.gain.setTargetAtTime(bw, t, tc);
+  hpfG.gain.setTargetAtTime(hw, t, tc);
+
+  // Filter frequencies — wider sweep than before so morph is clearly audible
+  const fc = 160 + (1 - m) * 2400; // 160 Hz (dark/blue) → 2560 Hz (bright)
+  lpf.frequency.setTargetAtTime(fc * 2.6, t, tc);
+  bpf.frequency.setTargetAtTime(fc,       t, tc);
+  hpf.frequency.setTargetAtTime(fc * 0.16, t, tc);
+  // Resonance — noticeable but not self-oscillating; motion still adds a spike
+  const res = 2.8 + bw * 7.5 + state.mqBoost * 0.45;
+  bpf.Q.setTargetAtTime(res, t, tc);
+  lpf.Q.setTargetAtTime(1.2 + lw * 2.0 + state.mqBoost * 0.25, t, tc);
+  hpf.Q.setTargetAtTime(1.2 + hw * 2.5 + state.mqBoost * 0.25, t, tc);
+
+  // ── FM shimmer (orange blobs) ──
+  blobVoice.forEach((v, i) => {
+    if (!v) return;
+    const fmHz = state.fm * state.fm * Math.min(v.freq * 0.45, 160);
+    v.fmGain.gain.setTargetAtTime(fmHz, t, tc);
+    v.fmMod.frequency.setTargetAtTime(v.freq * v.fmR * (1 + state.fm * 0.02), t, tc);
+  });
+
+  // ── Wavefold (red blobs) ──
+  const now = performance.now();
+  if (Math.abs(state.fold - lastFoldVal) > 0.012 && now - foldCurveUpdateT > 180) {
+    foldCurveUpdateT = now;
+    lastFoldVal = state.fold;
+    const folds = 1.5 + state.fold * 5.5;   // matches noteOn floor
+    const newCurve = makeFoldCurve(folds);
+    blobVoice.forEach(v => {
+      if (!v) return;
+      v.folder.curve = newCurve; v._lastFolds = folds;
+    });
+  }
+  blobVoice.forEach(v => {
+    if (!v) return;
+    const fwa = 0.22 + state.fold * 0.78;    // always ≥22% wet
+    v.foldDry.gain.setTargetAtTime(1 - fwa, t, tc);
+    v.foldWet.gain.setTargetAtTime(fwa,     t, tc);
+  });
+
+  // ── Stereo panning from live blob x position ──
+  blobVoice.forEach((v, i) => {
+    if (!v) return;
+    const pan = Math.max(-1, Math.min(1, px[i] * 2 - 1));
+    v.panner.pan.setTargetAtTime(pan, t, 0.18); // gentle slew so pan glides, not jumps
+  });
+
+  // ── Harmonic bloom (green blobs) — upper groups get louder ──
+  blobVoice.forEach((v, i) => {
+    if (!v) return;
+    const g = Math.floor(i / 5);
+    const bloom = g >= 3 ? 1 + state.harm * 0.85
+                : g >= 2 ? 1 + state.harm * 0.40
+                :          1 + state.harm * 0.10;
+    v.voiceGain.gain.setTargetAtTime(blobGainTarget(i) * bloom, t, tc);
+  });
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   HUD — update parameter bars
+════════════════════════════════════════════════════════════════ */
+function updateHUD() {
+  const s = state;
+  document.getElementById('pf0').style.width = (s.filt * 100).toFixed(1) + '%';
+  document.getElementById('pf1').style.width = ((s.vol - 0.22) / 0.78 * 100).toFixed(1) + '%';
+  document.getElementById('pf2').style.width = (s.fm * 100).toFixed(1) + '%';
+  document.getElementById('pf3').style.width = (s.fold * 100).toFixed(1) + '%';
+  document.getElementById('pf4').style.width = (s.harm * 100).toFixed(1) + '%';
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   START SCREEN
+════════════════════════════════════════════════════════════════ */
+const startEl = document.getElementById('start');
+let started = false;
+
+function begin() {
+  if (started) return;
+  started = true;
+  startEl.classList.add('hidden');
+  initAudio();
+}
+
+startEl.addEventListener('click',    begin);
+startEl.addEventListener('touchend', e => { e.preventDefault(); begin(); });
+</script>
+</body>
+</html>
